@@ -242,24 +242,38 @@ def _normalize_name(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
+def _token_run(needle: List[str], haystack: List[str]) -> bool:
+    """True if `needle` appears as a contiguous run of whole tokens in `haystack`.
+
+    Token-level (not substring) so "ai" never matches inside "daisuke" — matching
+    is on word boundaries. Equality is the n == len(haystack) case.
+    """
+    n = len(needle)
+    if n == 0 or n > len(haystack):
+        return False
+    return any(haystack[i : i + n] == needle for i in range(len(haystack) - n + 1))
+
+
 def _best_author_match(items: List[Dict[str, Any]], topic: str) -> str:
     """Return the profile URL of the post author whose name matches the topic.
 
-    Person-topic detection without a global predicate: if one of the returned
-    posts is authored by someone whose (multi-word) name equals or is contained
-    in the topic, treat the topic as being about that person and return their
-    profile URL. Empty string when no confident match — which keeps enrichment
-    off for keyword topics like "AI agents".
+    Person-topic detection without a global predicate: when a returned post's
+    author has a multi-word name that the topic clearly refers to, treat the
+    topic as being about that person and return their profile URL. Matching is
+    on whole-token runs (the author's full name appears in the topic, or vice
+    versa), and the topic itself must be at least two tokens — so single-word
+    keyword topics ("AI", "Tesla") and short phrases never enrich, and a topic
+    token can't accidentally match inside an unrelated author's name.
     """
-    topic_norm = _normalize_name(topic)
-    if not topic_norm:
+    topic_tokens = _normalize_name(topic).split()
+    if len(topic_tokens) < 2:
         return ""
     for item in items:
-        name = _normalize_name(item.get("author", ""))
+        name_tokens = _normalize_name(item.get("author", "")).split()
         url = (item.get("author_url") or "").strip()
-        if not url or len(name.split()) < 2:
+        if not url or len(name_tokens) < 2:
             continue
-        if name == topic_norm or name in topic_norm or topic_norm in name:
+        if _token_run(name_tokens, topic_tokens) or _token_run(topic_tokens, name_tokens):
             return url
     return ""
 

@@ -2,6 +2,7 @@ import unittest
 from unittest import mock
 
 from lib.linkedin import (
+    _best_author_match,
     _extract_posts,
     _int_field,
     _parse_date,
@@ -323,6 +324,36 @@ class TestProfileArticles(unittest.TestCase):
     def test_article_without_headline_skipped(self):
         prof = {"name": "X", "articles": [{"url": "u", "datePublished": "2026-06-10"}]}
         self.assertEqual([], parse_profile_articles(prof))
+
+
+class TestBestAuthorMatch(unittest.TestCase):
+    def test_exact_person_topic_matches(self):
+        items = [{"author": "Matt Van Horn", "author_url": "u-mvh"}]
+        self.assertEqual("u-mvh", _best_author_match(items, "Matt Van Horn"))
+
+    def test_name_contained_in_longer_topic(self):
+        items = [{"author": "Matt Van Horn", "author_url": "u-mvh"}]
+        self.assertEqual(
+            "u-mvh", _best_author_match(items, "what is Matt Van Horn building")
+        )
+
+    def test_single_word_topic_never_enriches(self):
+        # "AI" is one token — a keyword topic, not a person.
+        items = [{"author": "Daisuke Tanaka", "author_url": "u-dt"}]
+        self.assertEqual("", _best_author_match(items, "AI"))
+
+    def test_no_substring_false_positive_across_token_boundaries(self):
+        # Regression for the Greptile finding: a topic token must not match
+        # inside an unrelated author's name. "ai" must not hit "daisuke".
+        items = [{"author": "Daisuke Tanaka", "author_url": "u-dt"}]
+        self.assertEqual("", _best_author_match(items, "AI agents"))
+
+    def test_picks_matching_author_not_first(self):
+        items = [
+            {"author": "Eric Siu", "author_url": "u-eric"},
+            {"author": "Matt Van Horn", "author_url": "u-mvh"},
+        ]
+        self.assertEqual("u-mvh", _best_author_match(items, "Matt Van Horn loops"))
 
 
 class TestEnrichArticles(unittest.TestCase):
